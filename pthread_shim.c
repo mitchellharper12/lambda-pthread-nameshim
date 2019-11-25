@@ -7,17 +7,17 @@
 #include <errno.h>
 
 #define __TMP_THREAD_FILE "/tmp/threads"
-#define __SHIM_DEBUG 0
+#define __SHIM_DEBUG 1
 
 int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 	int (*orig_getname)(pthread_t thread, char* name, size_t len);
-	FILE* file = fopen(__TMP_THREAD_FILE, "r");
 	char line[48];
 	pthread_t line_id;
 	char line_name[20];
 	char thread_id_str[20];
 	int thread_found = 0;
 
+	FILE* file = fopen(__TMP_THREAD_FILE, "r");
 	orig_getname = dlsym(RTLD_NEXT, "pthread_getname_np");
 
 	if (file == NULL) {
@@ -26,8 +26,16 @@ int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 		return orig_getname(thread, name, len);
 	}
 
+	char* retval;
 	while (!feof(file)) {
-		fgets(line, sizeof(line), file);
+		retval = fgets(line, sizeof(line), file);
+		if (retval == NULL) {
+			if (errno != 0) {
+				return errno; // There was an error reading file
+			} else {
+				break; // Nothing left to read
+			}
+		}
 		if (__SHIM_DEBUG) {
 		    printf("In while loop\n");
 		    printf("Current line: '%s'\n", line);
