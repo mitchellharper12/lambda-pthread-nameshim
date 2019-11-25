@@ -7,7 +7,7 @@
 #include <errno.h>
 
 #define __TMP_THREAD_FILE "/tmp/threads"
-#define __SHIM_DEBUG 1
+#define __SHIM_DEBUG 0
 
 int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 	int (*orig_getname)(pthread_t thread, char* name, size_t len);
@@ -111,9 +111,17 @@ int pthread_setname_np(pthread_t thread, const char* name) {
 	if (len + 1 > 16)
 		return 1;
 	FILE* file = fopen(__TMP_THREAD_FILE, "a");
+	if (file == NULL) {
+		// error opening/creating file, we can't continue
+		return errno;
+	}
 	char line_buffer[48];
 	int line_len = snprintf(line_buffer, 48, "%s\t%u\n", name, thread);
 	size_t written = fwrite(line_buffer, line_len, 1, file);
+	if (written != 1) {
+		// Problem writing, we make no claims to handle this gracefully
+		return 3; // TODO standardize return values
+	}
 	fclose(file);
 	return 0;
 }
