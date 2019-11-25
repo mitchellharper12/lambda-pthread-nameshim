@@ -7,7 +7,7 @@
 #include <errno.h>
 
 #define __TMP_THREAD_FILE "/tmp/threads"
-#define __SHIM_DEBUG 1
+#define __SHIM_DEBUG 0
 
 int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 	int (*orig_getname)(pthread_t thread, char* name, size_t len);
@@ -16,7 +16,7 @@ int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 	pthread_t line_id;
 	char line_name[20];
 	char thread_id_str[20];
-	line_id = 0;
+	int thread_found = 0;
 
 	orig_getname = dlsym(RTLD_NEXT, "pthread_getname_np");
 
@@ -39,9 +39,10 @@ int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 			cur_char = line[cur_pos];
 			line_name[cur_pos] = cur_char;
 		}
-		if (cur_pos == 20)
+		if (cur_pos == 20) {
 			fclose(file);
 			return 2; // Should never hit this
+		}
 		// cur_char == '\t'
 		cur_pos++;
 		line_name[cur_pos] = '\0';
@@ -56,19 +57,34 @@ int pthread_getname_np(pthread_t thread, char* name, size_t len) {
 		if (__SHIM_DEBUG)
 			printf("Thread id str: %s\n", thread_id_str);
 		sscanf(thread_id_str, "%u", &line_id);
-		
-		if (line_id == thread) {
+
+		// This line is quite the hack..but it works
+		// TODO make this less terrible
+		int diff =(int) ((size_t) line_id - (size_t) thread);
+		if (__SHIM_DEBUG) {
+			printf("current recovered line id: %u\n", line_id);
+			printf("Diff: %d\n", diff);
+		}
+
+		if (diff == 0) {
+			if (__SHIM_DEBUG) {
+				printf("Name found for %u\n", line_id);
+			}
+			thread_found = 1;
 			size_t name_len = strlen(line_name);
-			if (name_len + 1 > len)
+			if (name_len + 1 > len) {
 				fclose(file);
-				return 1;
+				return 1; // Maybe do something better here
+			}
 			memcpy(name, line_name, len);
 			// We can't return here, there may
 			// have been a later update to the name
+			// and we have to scan the whole file
+			// to make sure
 		}
 	}
 	fclose(file);
-	if (line_id != 0) {
+	if (thread_found) {
 		// there was at least 1 processed
 		// successfully
 		return 0;
